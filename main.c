@@ -87,3 +87,18 @@ void apply_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH],
         }
     }
 }
+
+void erode_image(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
+                 unsigned char eroded[BMP_WIDTH][BMP_HEIGTH])
+{
+    for (int x = 0; x < BMP_WIDTH; x++)
+    {
+        for (int y = 0; y < BMP_HEIGTH; y++)
+        {
+            if (binary[x - 1][y] == 0 || binary[x + 1][y] == 0 || binary[x][y + 1] == 0 || binary[x][y - 1] == 0)
+            {
+                eroded[x][y] = 0;
+            }
+        }
+    }
+}
