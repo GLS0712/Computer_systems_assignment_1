@@ -28,18 +28,18 @@ int main(int argc, char *argv[])
            input_path, BMP_WIDTH, BMP_HEIGTH, BMP_CHANNELS);
 
     // flipper farverne til den omvendte altså hvid til sort og sort til hvid
-    for (int x = 0; x < BMP_WIDTH; x++)
-    {
-        for (int y = 0; y < BMP_HEIGTH; y++)
-        {
-            for (int c = 0; c < BMP_CHANNELS; c++)
-            {
-                color_image[x][y][c] = 255 - color_image[x][y][c];
-            }
-        }
-    }
+    // for (int x = 0; x < BMP_WIDTH; x++)
+    // {
+    //     for (int y = 0; y < BMP_HEIGTH; y++)
+    //     {
+    //         for (int c = 0; c < BMP_CHANNELS; c++)
+    //         {
+    //             color_image[x][y][c] = 255 - color_image[x][y][c];
+    //         }
+    //     }
+    // }
 
-    convert_to_grayscale(color_image, gray_image); // updaterer billedet til gray-scale
+    convert_to_grayscale(color_image, gray_image);        // updaterer billedet til gray-scale
     apply_threshold(gray_image, binary_image, threshold); // updaterer billedet til sort-hvid
 
     for (int x = 0; x < BMP_WIDTH; x++)
@@ -95,9 +95,68 @@ void erode_image(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
     {
         for (int y = 0; y < BMP_HEIGTH; y++)
         {
-            if (binary[x - 1][y] == 0 || binary[x + 1][y] == 0 || binary[x][y + 1] == 0 || binary[x][y - 1] == 0)
+            if (x == 0 && y == 0)
             {
-                eroded[x][y] = 0;
+                if (binary[x + 1][y] == 0 || binary[x][y + 1] == 0)
+                {
+                    eroded[x][y] = 0;
+                }
+            }
+            else if (x == 255 && y == 255)
+            {
+                if (binary[x - 1][y] == 0 || binary[x][y - 1] == 0)
+                {
+                    eroded[x][y] = 0;
+                }
+            }
+            else if (x == 255 && y == 0)
+            {
+                if (binary[x - 1][y] == 0 || binary[x][y + 1] == 0)
+                {
+                    eroded[x][y] = 0;
+                }
+            }
+            else if (x == 0 && y == 255)
+            {
+                if (binary[x + 1][y] == 0 || binary[x][y - 1] == 0)
+                {
+                    eroded[x][y] = 0;
+                }
+            }
+            else if (x == 0)
+            {
+                if (binary[x + 1][y] == 0 || binary[x][y + 1] == 0 || binary[x][y - 1] == 0)
+                {
+                    eroded[x][y] = 0;
+                }
+            }
+            else if (y == 0)
+            {
+                if (binary[x + 1][y] == 0 || binary[x - 1][y] == 0 || binary[x][y + 1] == 0)
+                {
+                    eroded[x][y] = 0;
+                }
+            }
+            else if (x == 255)
+            {
+                if (binary[x - 1][y] == 0 || binary[x][y + 1] == 0 || binary[x][y - 1] == 0)
+                {
+                    eroded[x][y] = 0;
+                }
+            }
+            else if (y == 255)
+            {
+                if (binary[x - 1][y] == 0 || binary[x + 1][y] == 0 || binary[x][y + 1] == 0 || binary[x][y - 1] == 0)
+                {
+                    eroded[x][y] = 0;
+                }
+            }
+            else
+            {
+                if (binary[x - 1][y] == 0 || binary[x + 1][y] == 0 || binary[x][y + 1] == 0 || binary[x][y - 1] == 0)
+                {
+                    eroded[x][y] = 0;
+                }
             }
         }
     }
