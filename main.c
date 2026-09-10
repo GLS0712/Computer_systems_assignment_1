@@ -1,10 +1,16 @@
+//To compile (win): gcc cbmp.c main.c -o main.exe -std=c99
+//To run (win): main.exe example.bmp example_inv.bmp
+
+#include <stdlib.h>
 #include <stdio.h>
 #include "cbmp.h"
 
 void convert_to_grayscale(unsigned char image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS],
                           unsigned char gray[BMP_WIDTH][BMP_HEIGTH]);
 void apply_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH],
-                     unsigned char image[BMP_WIDTH][BMP_HEIGTH], int threshold);
+                     unsigned char binary[BMP_WIDTH][BMP_HEIGTH], int threshold);
+void erode_image(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
+                 unsigned char eroded[BMP_WIDTH][BMP_HEIGTH]);
 
 int main(int argc, char *argv[])
 {
@@ -21,7 +27,7 @@ int main(int argc, char *argv[])
     static unsigned char binary_image[BMP_WIDTH][BMP_HEIGTH];
     static unsigned char output_image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS];
 
-    int threshold = 140;
+    int threshold = 127;
 
     read_bitmap(input_path, color_image); // læser billedet
     printf("Loaded '%s' (%d x %d, %d channels)\n",
