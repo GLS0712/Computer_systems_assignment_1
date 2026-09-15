@@ -29,11 +29,20 @@ int erode_image(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
                  unsigned char eroded[BMP_WIDTH][BMP_HEIGTH]);
 
 
-#define CAPTURE_SIZE 4
+#define CAPTURE_SIZE 12
 #define EXCLUSION_FRAME 1
 #define MAX_CELLS 2000
 int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
                   int coords[MAX_CELLS][2], int *cell_count);
+
+
+#define MARKER_ARM_LENGHT 5
+#define MARKER_R 255
+#define MARKER_G 0
+#define MARKER_B 0
+void generate_output_image(unsigned char color_image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS],
+                            int coords[MAX_CELLS][2], int cell_count);
+
 
 // Creates a directory if it doesn't already exist. Safe to call on a path
 // that already exists (that's not treated as an error), and safe to call
@@ -134,7 +143,7 @@ int main(int argc, char *argv[])
 
     static int coords[MAX_CELLS][2];
     int cell_count = 0;
-    int threshold = 127;
+    int threshold = 90;
 
     // Work out (and create) the folders this run needs, up front: output_dir
     // for the final output file, and a dedicated steps_dir for this image's
@@ -203,20 +212,11 @@ int main(int argc, char *argv[])
         printf("  cell %d: (x=%d, y=%d)\n", i, coords[i][0], coords[i][1]);
     }
 
-    //ændre billedet til at have det korrekte antal dimentioner
-    for (int x = 0; x < BMP_WIDTH; x++)
-    {
-        for (int y = 0; y < BMP_HEIGTH; y++)
-        {
-            for (int c = 0; c < BMP_CHANNELS; c++)
-            {
-                output_image[x][y][c] = current[x][y];
-            }
-        }
-    }
 
-    write_bitmap(output_image, output_path);
-    printf("Wrote thresholded image to '%s'\n", output_path);
+    generate_output_image(color_image, coords, cell_count);
+
+    write_bitmap(color_image, output_path);
+    printf("Wrote output image with %d marked cell(s) to '%s'\n", cell_count, output_path);
     return 0;
 }
 
@@ -291,8 +291,8 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
                   int coords[MAX_CELLS][2], int *cell_count)
 {
     int detections_found = 0;
-    int half_before_center = CAPTURE_SIZE / 2;      // 6
-    int half_after_center = CAPTURE_SIZE / 2 - 1;   // 5 (12 er lige, så ikke symmetrisk)
+    int half_before_center = CAPTURE_SIZE / 2;
+    int half_after_center = CAPTURE_SIZE / 2;
 
     for (int pixel_x = 0; pixel_x < BMP_WIDTH; pixel_x++) {
         for (int pixel_y = 0; pixel_y < BMP_HEIGTH; pixel_y++) {
@@ -354,4 +354,33 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
     }
 
     return detections_found;
+}
+
+
+
+void generate_output_image(unsigned char color_image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS],
+                            int coords[MAX_CELLS][2], int cell_count)
+{
+    for (int i = 0; i < cell_count; i++) {
+        int cx = coords[i][0];
+        int cy = coords[i][1];
+
+        // horizontal arm (varies x, fixed y = cy)
+        for (int dx = -MARKER_ARM_LENGHT; dx <= MARKER_ARM_LENGHT; dx++) {
+            int x = cx + dx;
+            if (x < 0 || x >= BMP_WIDTH) continue;
+            color_image[x][cy][0] = MARKER_R;
+            color_image[x][cy][1] = MARKER_G;
+            color_image[x][cy][2] = MARKER_B;
+        }
+
+        // vertical arm (varies y, fixed x = cx)
+        for (int dy = -MARKER_ARM_LENGHT; dy <= MARKER_ARM_LENGHT; dy++) {
+            int y = cy + dy;
+            if (y < 0 || y >= BMP_HEIGTH) continue;
+            color_image[cx][y][0] = MARKER_R;
+            color_image[cx][y][1] = MARKER_G;
+            color_image[cx][y][2] = MARKER_B;
+        }
+    }
 }
