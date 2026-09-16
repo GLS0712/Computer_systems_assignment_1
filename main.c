@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <math.h>
 #include "cbmp.h"
 
 // Creating a directory is one of the few things that isn't the same call
@@ -172,12 +173,12 @@ int main(int argc, char *argv[])
     ensure_directory(output_dir);
     ensure_directory(steps_dir);
 
-    read_bitmap( input_path, color_image); // læser billedet
+    read_bitmap(input_path, color_image); // læser billedet
     printf("Loaded '%s' (%d x %d, %d channels)\n",
            input_path, BMP_WIDTH, BMP_HEIGTH, BMP_CHANNELS);
 
-    convert_to_grayscale(color_image, gray_image);        // updaterer billedet til gray-scale
-    printf("threshold: %d \n",find_threshold(gray_image));
+    convert_to_grayscale(color_image, gray_image); // updaterer billedet til gray-scale
+    printf("threshold: %d \n", find_threshold(gray_image));
     apply_threshold(gray_image, binary_image, threshold); // updaterer billedet til sort-hvid
 
     // "current" og "next" er pointere til de to buffere (binary_image og eroded_image),
@@ -275,7 +276,6 @@ int find_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH])
         }
     }
     return (biggest + next_biggest) / 2;
-
 }
 void apply_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH],
                      unsigned char binary[BMP_WIDTH][BMP_HEIGTH], int threshold)
@@ -340,6 +340,7 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
                  int coords[MAX_CELLS][2], int *cell_count)
 {
     int detections_found = 0;
+    int radius = CAPTURE_SIZE / 2;
     int half_before_center = CAPTURE_SIZE / 2;
     int half_after_center = CAPTURE_SIZE / 2;
 
@@ -365,6 +366,10 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
             {
                 for (int capture_y = capture_top; capture_y <= capture_bottom; capture_y++)
                 {
+                    if (sqrt(((capture_x - pixel_x) * (capture_x - pixel_x)) + ((capture_y - pixel_y) * (capture_y - pixel_y))) > radius)
+                    {
+                        continue;
+                    }
                     if (binary[capture_x][capture_y] == 255)
                     {
                         found_white_pixel = 1;
@@ -380,10 +385,14 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
             int exclusion_ring_is_black = 1;
             for (int window_x = window_left; window_x <= window_right && exclusion_ring_is_black; window_x++)
             {
+
                 for (int window_y = window_top; window_y <= window_bottom; window_y++)
                 {
+                    if (sqrt(((window_x - pixel_x) * (window_x - pixel_x)) + ((window_y - pixel_y) * (window_y - pixel_y))) > radius + EXCLUSION_FRAME)
+                        continue;
                     int inside_capture_area = (window_x >= capture_left && window_x <= capture_right &&
-                                               window_y >= capture_top && window_y <= capture_bottom);
+                                               window_y >= capture_top && window_y <= capture_bottom &&
+                                               sqrt(((window_x - pixel_x) * (window_x - pixel_x)) + ((window_y - pixel_y) * (window_y - pixel_y))) < radius);
                     if (!inside_capture_area && binary[window_x][window_y] == 255)
                     {
                         exclusion_ring_is_black = 0;
@@ -412,6 +421,8 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
             {
                 for (int capture_y = capture_top; capture_y <= capture_bottom; capture_y++)
                 {
+                    // if (sqrt(((capture_x - pixel_x) * (capture_x - pixel_x)) + ((capture_y - pixel_y) * (capture_y - pixel_y))) > radius)
+                    //     continue;
                     binary[capture_x][capture_y] = 0;
                 }
             }
