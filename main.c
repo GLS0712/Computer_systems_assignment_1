@@ -39,6 +39,12 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
 #define MARKER_R 255
 #define MARKER_G 0
 #define MARKER_B 0
+#define DETECTION_FRAME_R 0
+#define DETECTION_FRAME_G 255
+#define DETECTION_FRAME_B 0
+#define EXCLUSION_FRAME_R 0
+#define EXCLUSION_FRAME_G 0
+#define EXCLUSION_FRAME_B 255
 void generate_output_image(unsigned char color_image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS],
                            int coords[MAX_CELLS][2], int cell_count);
 
@@ -435,6 +441,9 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
 void generate_output_image(unsigned char color_image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS],
                            int coords[MAX_CELLS][2], int cell_count)
 {
+    int radius = CAPTURE_SIZE / 2;
+    int exclusion_radius = radius + EXCLUSION_FRAME;
+
     for (int i = 0; i < cell_count; i++)
     {
         int cx = coords[i][0];
@@ -460,6 +469,31 @@ void generate_output_image(unsigned char color_image[BMP_WIDTH][BMP_HEIGTH][BMP_
             color_image[cx][y][0] = MARKER_R;
             color_image[cx][y][1] = MARKER_G;
             color_image[cx][y][2] = MARKER_B;
+        }
+        for (int x = cx - exclusion_radius; x <= cx + exclusion_radius; x++)
+        {
+            for (int y = cy - exclusion_radius; y <= cy + exclusion_radius; y++)
+            {
+                if (x < 0 || x >= BMP_WIDTH || y < 0 || y >= BMP_HEIGTH)
+                    continue;
+
+                int dx = x - cx;
+                int dy = y - cy;
+                double distance = sqrt((dx * dx) + (dy * dy));
+
+                if (distance > radius - 1 && distance <= radius)
+                {
+                    color_image[x][y][0] = DETECTION_FRAME_R;
+                    color_image[x][y][1] = DETECTION_FRAME_G;
+                    color_image[x][y][2] = DETECTION_FRAME_B;
+                }
+                else if (distance > radius && distance <= exclusion_radius)
+                {
+                    color_image[x][y][0] = EXCLUSION_FRAME_R;
+                    color_image[x][y][1] = EXCLUSION_FRAME_G;
+                    color_image[x][y][2] = EXCLUSION_FRAME_B;
+                }
+            }
         }
     }
 }
