@@ -26,11 +26,12 @@ int find_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH]);
 void apply_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH],
                      unsigned char binary[BMP_WIDTH][BMP_HEIGTH], int threshold);
 int erode_image(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
-                unsigned char eroded[BMP_WIDTH][BMP_HEIGTH]);
+                unsigned char eroded[BMP_WIDTH][BMP_HEIGTH], int use_square);
 
 #define CAPTURE_SIZE 12
 #define EXCLUSION_FRAME 1
 #define MAX_CELLS 2000
+#define MIN_CELL_DISTANCE 11
 int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
                  int coords[MAX_CELLS][2], int *cell_count);
 
@@ -159,7 +160,7 @@ int main(int argc, char *argv[])
 
     static int coords[MAX_CELLS][2];
     int cell_count = 0;
-    int threshold = 90;
+    
 
     // Work out (and create) the folders this run needs, up front: output_dir
     // for the final output file, and a dedicated steps_dir for this image's
@@ -177,7 +178,11 @@ int main(int argc, char *argv[])
            input_path, BMP_WIDTH, BMP_HEIGTH, BMP_CHANNELS);
 
     convert_to_grayscale(color_image, gray_image);        // updaterer billedet til gray-scale
-    printf("threshold: %d \n",find_threshold(gray_image));
+
+    // int threshold = 90;
+    int threshold = find_threshold(gray_image);
+    printf("Dynamic threshold: %d\n", threshold);
+
     apply_threshold(gray_image, binary_image, threshold); // updaterer billedet til sort-hvid
 
     // "current" og "next" er pointere til de to buffere (binary_image og eroded_image),
@@ -192,7 +197,7 @@ int main(int argc, char *argv[])
     {
         // kør en erosion: "current" er input, "next" er output
         // changed bliver 0 når et helt pass ikke fjerner flere pixels (billedet er helt sort)
-        changed = erode_image(current, next);
+        changed = erode_image(current, next, passes % 2);
         passes++;
 
         int found = detect_spots(next, coords, &cell_count);
@@ -251,32 +256,67 @@ void convert_to_grayscale(unsigned char image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNEL
         }
     }
 }
+
+// Otsu's method: tries every possible threshold t (0-254), splitting pixels
+// into "background" (gray <= t) and "foreground" (gray > t), and scores
+// each split by how well-separated the two groups are:
+//   variance(t) = count0 * count1 * (mean0 - mean1)^2
+// A big count0*count1 rewards splits where neither side is empty/tiny; a
+// big (mean0-mean1)^2 rewards splits where the two sides have very
+// different average brightness. The t that maximizes this score wins.
 int find_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH])
 {
-    int colors[255];
-    int biggest;
-    int next_biggest;
-    for (int x = 0; x < BMP_WIDTH; x++)
-    {
-        for (int y = 0; y < BMP_HEIGTH; y++)
-        {
-            colors[gray[x][y]]++;
+    // Step 1: build the histogram, same as before.
+    int histogram[256] = {0};
+    for (int x = 0; x < BMP_WIDTH; x++) {
+        for (int y = 0; y < BMP_HEIGTH; y++) {
+            histogram[gray[x][y]]++;
         }
     }
-    for (int i = 0; i < 255; i++)
-    {
-        if (colors[i] > biggest)
-        {
-            biggest = i;
-        }
-        else if (colors[i] > next_biggest)
-        {
-            next_biggest = i;
-        }
-    }
-    return (biggest + next_biggest) / 2;
 
+    long total_count = (long)BMP_WIDTH * BMP_HEIGTH;
+
+    // Step 2: total sum of ALL pixel gray values, computed once up front.
+    // (total_sum - sum0) then gives the foreground sum at any t, without
+    // rescanning the histogram for every candidate t.
+    long total_sum = 0;
+    for (int i = 0; i < 256; i++) {
+        total_sum += (long)i * histogram[i];
+    }
+
+    // Step 3: sweep every candidate threshold t, keeping running totals for
+    // the background side (count0, sum0) so each step is O(1), not O(256).
+    long count0 = 0;
+    long sum0 = 0;
+    double best_variance = -1.0;
+    int best_t = 0;
+
+    for (int t = 0; t < 255; t++) {
+        count0 += histogram[t];
+        sum0 += (long)t * histogram[t];
+
+        long count1 = total_count - count0;
+        if (count0 == 0 || count1 == 0) {
+            // Degenerate split (everything on one side) -- skip, would
+            // divide by zero computing a mean.
+            continue;
+        }
+
+        long sum1 = total_sum - sum0;
+        double mean0 = (double)sum0 / (double)count0;
+        double mean1 = (double)sum1 / (double)count1;
+        double diff = mean0 - mean1;
+        double variance = (double)count0 * (double)count1 * diff * diff;
+
+        if (variance > best_variance) {
+            best_variance = variance;
+            best_t = t;
+        }
+    }
+
+    return best_t;
 }
+
 void apply_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH],
                      unsigned char binary[BMP_WIDTH][BMP_HEIGTH], int threshold)
 {
@@ -295,42 +335,33 @@ void apply_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH],
 }
 
 int erode_image(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
-                unsigned char eroded[BMP_WIDTH][BMP_HEIGTH])
+                unsigned char eroded[BMP_WIDTH][BMP_HEIGTH], int use_square)
 {
-    int changed = 0; // sættes til 1 hvis mindst én pixel bliver eroderet væk i dette pass
-
+    int changed = 0;
     for (int x = 0; x < BMP_WIDTH; x++)
     {
         for (int y = 0; y < BMP_HEIGTH; y++)
         {
+            if (binary[x][y] == 0) { eroded[x][y] = 0; continue; }
 
-            // en pixel der allerede er sort forbliver sort
-            if (binary[x][y] == 0)
+            // pixels on the image edge always die
+            if (x == 0 || y == 0 || x == BMP_WIDTH - 1 || y == BMP_HEIGTH - 1)
             {
-                eroded[x][y] = 0;
-                continue;
+                eroded[x][y] = 0; changed = 1; continue;
             }
 
-            // en hvid pixel overlever kun hvis den IKKE ligger på billedets kant,
-            // og alle 4 naboer (op/ned/venstre/højre) også er hvide
-            int survives =
-                (x > 0) && (x < BMP_WIDTH - 1) &&  // tjekker at vi er inden for billedet på x-aksen
-                (y > 0) && (y < BMP_HEIGTH - 1) && // tjekker at vi er inden for billedet på y-aksen
-                binary[x - 1][y] == 255 &&
-                binary[x + 1][y] == 255 &&
-                binary[x][y - 1] == 255 &&
-                binary[x][y + 1] == 255;
+            // cross: up/down/left/right
+            int survives = binary[x-1][y] == 255 && binary[x+1][y] == 255 &&
+                           binary[x][y-1] == 255 && binary[x][y+1] == 255;
 
-            if (survives)
-            {
-                eroded[x][y] = 255;
-            }
-            else
-            {
-                // pixel lå på kanten af en hvid region og bliver "spist" væk
-                eroded[x][y] = 0;
-                changed = 1;
-            }
+            // square: also the 4 diagonals
+            if (use_square)
+                survives = survives &&
+                           binary[x-1][y-1] == 255 && binary[x+1][y-1] == 255 &&
+                           binary[x-1][y+1] == 255 && binary[x+1][y+1] == 255;
+
+            if (survives) eroded[x][y] = 255;
+            else { eroded[x][y] = 0; changed = 1; }
         }
     }
     return changed;
@@ -341,23 +372,16 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
 {
     int detections_found = 0;
     int half_before_center = CAPTURE_SIZE / 2;
-    int half_after_center = CAPTURE_SIZE / 2;
+    int half_after_center = CAPTURE_SIZE / 2 - 1; // giver præcis 12x12
 
     for (int pixel_x = 0; pixel_x < BMP_WIDTH; pixel_x++)
     {
         for (int pixel_y = 0; pixel_y < BMP_HEIGTH; pixel_y++)
         {
-
             int capture_left = pixel_x - half_before_center, capture_right = pixel_x + half_after_center;
             int capture_top = pixel_y - half_before_center, capture_bottom = pixel_y + half_after_center;
             int window_left = capture_left - EXCLUSION_FRAME, window_right = capture_right + EXCLUSION_FRAME;
             int window_top = capture_top - EXCLUSION_FRAME, window_bottom = capture_bottom + EXCLUSION_FRAME;
-
-            // Spring kandidater over, hvis deres vindue ville falde uden for billedet.
-            if (window_left < 0 || window_right >= BMP_WIDTH || window_top < 0 || window_bottom >= BMP_HEIGTH)
-            {
-                continue;
-            }
 
             // Betingelse 1: mindst én hvid pixel inde i capture-området.
             int found_white_pixel = 0;
@@ -365,6 +389,9 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
             {
                 for (int capture_y = capture_top; capture_y <= capture_bottom; capture_y++)
                 {
+                    // uden for billedet tæller som sort
+                    if (capture_x < 0 || capture_x >= BMP_WIDTH || capture_y < 0 || capture_y >= BMP_HEIGTH)
+                        continue;
                     if (binary[capture_x][capture_y] == 255)
                     {
                         found_white_pixel = 1;
@@ -375,13 +402,15 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
             if (!found_white_pixel)
                 continue;
 
-            // Betingelse 2: hver pixel i den omkringliggende exclusion-ring
-            // (vinduet minus capture-området) er sort.
+            // Betingelse 2: exclusion-ringen er helt sort.
             int exclusion_ring_is_black = 1;
             for (int window_x = window_left; window_x <= window_right && exclusion_ring_is_black; window_x++)
             {
                 for (int window_y = window_top; window_y <= window_bottom; window_y++)
                 {
+                    // uden for billedet tæller som sort
+                    if (window_x < 0 || window_x >= BMP_WIDTH || window_y < 0 || window_y >= BMP_HEIGTH)
+                        continue;
                     int inside_capture_area = (window_x >= capture_left && window_x <= capture_right &&
                                                window_y >= capture_top && window_y <= capture_bottom);
                     if (!inside_capture_area && binary[window_x][window_y] == 255)
@@ -394,30 +423,57 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
             if (!exclusion_ring_is_black)
                 continue;
 
-            // Detektion! Registrer den, og gør derefter capture-området sort,
-            // så den samme celle ikke kan udløse en detektion igen.
-            if (*cell_count < MAX_CELLS)
-            {
-                coords[*cell_count][0] = pixel_x;
-                coords[*cell_count][1] = pixel_y;
-                (*cell_count)++;
-                detections_found++;
-            }
-            else
-            {
-                fprintf(stderr, "Warning: MAX_CELLS reached, dropping detection at (%d,%d)\n", pixel_x, pixel_y);
-            }
-
+                        // Find centrum af den hvide plet (gennemsnit af de hvide pixels)
+            // og gør samtidig capture-området sort.
+            long sum_x = 0, sum_y = 0, white_count = 0;
             for (int capture_x = capture_left; capture_x <= capture_right; capture_x++)
             {
                 for (int capture_y = capture_top; capture_y <= capture_bottom; capture_y++)
                 {
+                    if (capture_x < 0 || capture_x >= BMP_WIDTH || capture_y < 0 || capture_y >= BMP_HEIGTH)
+                        continue;
+                    if (binary[capture_x][capture_y] == 255)
+                    {
+                        sum_x += capture_x;
+                        sum_y += capture_y;
+                        white_count++;
+                    }
                     binary[capture_x][capture_y] = 0;
+                }
+            }
+            int center_x = (int)(sum_x / white_count); // white_count > 0, betingelse 1 garanterer det
+            int center_y = (int)(sum_y / white_count);
+
+            // Er der allerede en celle tæt på? Så er det samme celle, der er
+            // blevet splittet i to af erosionen -- tæl den ikke igen.
+            int duplicate = 0;
+            for (int i = 0; i < *cell_count; i++)
+            {
+                int dx = coords[i][0] - center_x;
+                int dy = coords[i][1] - center_y;
+                if (dx * dx + dy * dy < MIN_CELL_DISTANCE * MIN_CELL_DISTANCE)
+                {
+                    duplicate = 1;
+                    break;
+                }
+            }
+
+            if (!duplicate)
+            {
+                if (*cell_count < MAX_CELLS)
+                {
+                    coords[*cell_count][0] = center_x;
+                    coords[*cell_count][1] = center_y;
+                    (*cell_count)++;
+                    detections_found++;
+                }
+                else
+                {
+                    fprintf(stderr, "Warning: MAX_CELLS reached, dropping detection at (%d,%d)\n", center_x, center_y);
                 }
             }
         }
     }
-
     return detections_found;
 }
 
