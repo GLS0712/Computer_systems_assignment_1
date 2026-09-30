@@ -42,12 +42,12 @@
 #define MIN_PEAK_DEPTH 6     // ignorér pletter der er mindre end ~2 px dybe
 #define PEAK_RADIUS 5        // en bakketop skal være højest inden for denne radius (px)
 
-#define MIN_CELL_DISTANCE 5  // bakketoppe tættere end dette (px) er altid én celle
+#define MIN_CELL_DISTANCE 10  // bakketoppe tættere end dette (px) er altid én celle
 #define VALLEY_SEARCH 25     // tjek for dal mellem bakketoppe tættere end dette (px)
 #define VALLEY_PERCENT 70    // samme celle hvis linjen mellem to bakketoppe aldrig
                              // falder under denne % af den laveste bakketop
 
-#define DEBUG_VALLEYS 1      // 1 = udskriv hver dal-beslutning (til finjustering)
+#define DEBUG_VALLEYS 0      // 1 = udskriv hver dal-beslutning (til finjustering)
 
 #define MARKER_ARM_LENGHT 5
 #define MARKER_R 255
