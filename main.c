@@ -172,12 +172,12 @@ int main(int argc, char *argv[])
     ensure_directory(output_dir);
     ensure_directory(steps_dir);
 
-    read_bitmap( input_path, color_image); // læser billedet
+    read_bitmap(input_path, color_image); // læser billedet
     printf("Loaded '%s' (%d x %d, %d channels)\n",
            input_path, BMP_WIDTH, BMP_HEIGTH, BMP_CHANNELS);
 
-    convert_to_grayscale(color_image, gray_image);        // updaterer billedet til gray-scale
-    printf("threshold: %d \n",find_threshold(gray_image));
+    convert_to_grayscale(color_image, gray_image); // updaterer billedet til gray-scale
+    printf("threshold: %d \n", find_threshold(gray_image));
     apply_threshold(gray_image, binary_image, threshold); // updaterer billedet til sort-hvid
 
     // "current" og "next" er pointere til de to buffere (binary_image og eroded_image),
@@ -275,7 +275,6 @@ int find_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH])
         }
     }
     return (biggest + next_biggest) / 2;
-
 }
 void apply_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH],
                      unsigned char binary[BMP_WIDTH][BMP_HEIGTH], int threshold)
@@ -319,7 +318,19 @@ int erode_image(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
                 binary[x - 1][y] == 255 &&
                 binary[x + 1][y] == 255 &&
                 binary[x][y - 1] == 255 &&
-                binary[x][y + 1] == 255;
+                binary[x][y + 1] == 255 &&
+                binary[x - 1][y - 1] == 255 &&
+                binary[x + 1][y + 1] == 255 &&
+                binary[x + 1][y - 1] == 255 &&
+                binary[x - 1][y + 1] == 255 ||
+                binary[x - 1][y] == 0 &&
+                binary[x + 1][y] == 0 &&
+                binary[x][y - 1] == 0 &&
+                binary[x][y + 1] == 0 &&
+                binary[x - 1][y - 1] == 0 &&
+                binary[x + 1][y + 1] == 0 &&
+                binary[x + 1][y - 1] == 0 &&
+                binary[x - 1][y + 1] == 0 ;
 
             if (survives)
             {
