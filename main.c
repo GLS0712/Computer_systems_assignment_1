@@ -62,8 +62,8 @@ static void ensure_directory(const char *path)
 {
     if (path[0] == '\0')
         return;
-    if (MKDIR(path) != 0 && errno != EEXIST)
-        fprintf(stderr, "Warning: could not create directory '%s'\n", path);
+    // if (MKDIR(path) != 0 && errno != EEXIST)
+        // fprintf(stderr, "Warning: could not create directory '%s'\n", path);
 }
 
 // "samples/easy/1EASY.bmp" -> "results_example/1EASY_out.bmp"
@@ -84,7 +84,7 @@ static void get_default_output_path(const char *input_path, char *output_path, s
     if (dot)
         *dot = '\0';
 
-    snprintf(output_path, output_path_size, "results_example/%s_out.bmp", name);
+    // snprintf(output_path, output_path_size, "results_example/%s_out.bmp", name);
 }
 
 // From "results_example/1EASY_out.bmp" works out:
@@ -123,10 +123,10 @@ static void get_output_folders(const char *output_path,
     if (dot)
         *dot = '\0';
 
-    if (output_dir[0] != '\0')
-        snprintf(steps_dir, steps_dir_size, "%s/%s_steps", output_dir, base);
-    else
-        snprintf(steps_dir, steps_dir_size, "%s_steps", base);
+    // if (output_dir[0] != '\0')
+    //     snprintf(steps_dir, steps_dir_size, "%s/%s_steps", output_dir, base);
+    // else
+        // snprintf(steps_dir, steps_dir_size, "%s_steps", base);
 }
 
 /* ------------------------------------------------------------------ */
@@ -360,7 +360,7 @@ int detect_spots(unsigned char binary[BMP_WIDTH][BMP_HEIGTH],
             }
             else
             {
-                fprintf(stderr, "Warning: MAX_CELLS reached, dropping detection at (%d,%d)\n", center_x, center_y);
+                // fprintf(stderr, "Warning: MAX_CELLS reached, dropping detection at (%d,%d)\n", center_x, center_y);
             }
         }
     return detections_found;
@@ -410,7 +410,7 @@ int main(int argc, char *argv[])
 {
     if (argc != 2 && argc != 3)
     {
-        fprintf(stderr, "Usage: %s <input.bmp> [output.bmp]\n", argv[0]);
+        // fprintf(stderr, "Usage: %s <input.bmp> [output.bmp]\n", argv[0]);
         return 1;
     }
     char *input_path = argv[1];
@@ -446,17 +446,20 @@ int main(int argc, char *argv[])
     char step_filename[512];
 #endif
 
+    clock_t startTime = clock();
+
+
     // Step 1
     read_bitmap(input_path, color_image);
-    printf("Loaded '%s' (%d x %d, %d channels)\n",
-           input_path, BMP_WIDTH, BMP_HEIGTH, BMP_CHANNELS);
+    // printf("Loaded '%s' (%d x %d, %d channels)\n",
+        //    input_path, BMP_WIDTH, BMP_HEIGTH, BMP_CHANNELS);
 
     // Step 2
     convert_to_grayscale(color_image, gray_image);
 
     // Step 3
     int threshold = find_threshold(gray_image);
-    printf("Dynamic threshold: %d\n", threshold);
+    // printf("Dynamic threshold: %d\n", threshold);
     apply_threshold(gray_image, binary_image, threshold);
 
     // Step 4: erodér indtil billedet er helt sort.
@@ -475,14 +478,14 @@ int main(int argc, char *argv[])
 
         int found = detect_spots(next, coords, &cell_count);
         if (found > 0)
-            printf("  pass %d: detected %d cell(s) (total so far: %d)\n",
-                   passes, found, cell_count);
+            // printf("  pass %d: detected %d cell(s) (total so far: %d)\n",
+                //    passes, found, cell_count);
 
 #if SAVE_STEP_IMAGES
         for (int x = 0; x < BMP_WIDTH; x++)
             for (int y = 0; y < BMP_HEIGTH; y++)
                 step_image[x][y][0] = step_image[x][y][1] = step_image[x][y][2] = next[x][y];
-        snprintf(step_filename, sizeof(step_filename), "%s/erode_step_%02d.bmp", steps_dir, passes);
+        // snprintf(step_filename, sizeof(step_filename), "%s/erode_step_%02d.bmp", steps_dir, passes);
         write_bitmap(step_image, step_filename);
 #endif
 
@@ -490,21 +493,23 @@ int main(int argc, char *argv[])
         current = next;
         next = tmp;
     }
-    printf("Eroded to completion after %d pass(es)\n", passes);
+    // printf("Eroded to completion after %d pass(es)\n", passes);
 
     // Step 5
     generate_output_image(color_image, coords, cell_count);
 
     // Step 6
     write_bitmap(color_image, output_path);
-    printf("Detected %d cell(s) total:\n", cell_count);
-    for (int i = 0; i < cell_count; i++)
-        printf("  cell %d: (x=%d, y=%d)\n", i, coords[i][0], coords[i][1]);
-    printf("Wrote output image with %d marked cell(s) to '%s'\n", cell_count, output_path);
+    // printf("Detected %d cell(s) total:\n", cell_count);
+    // for (int i = 0; i < cell_count; i++)
+    //     printf("  cell %d: (x=%d, y=%d)\n", i, coords[i][0], coords[i][1]);
+    // printf("Wrote output image with %d marked cell(s) to '%s'\n", cell_count, output_path);
 
 
+    clock_t endTime = clock();
+    double runTimeMs = (double)(endTime - startTime) * 1000.0 / CLOCKS_PER_SEC;
 
-
+    printf("run time: %.3f seconds (%.0f ms)\n", runTimeMs / 1000.0, runTimeMs);
     
     return 0;
 }
