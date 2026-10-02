@@ -16,6 +16,7 @@
 #include <string.h>
 #include <errno.h>
 #include "cbmp.h"
+#include "time.h"
 
 // Creating a directory is one of the few things that isn't the same call
 // on Windows vs Linux/Mac, so we pick the right one at compile time.
@@ -500,5 +501,10 @@ int main(int argc, char *argv[])
     for (int i = 0; i < cell_count; i++)
         printf("  cell %d: (x=%d, y=%d)\n", i, coords[i][0], coords[i][1]);
     printf("Wrote output image with %d marked cell(s) to '%s'\n", cell_count, output_path);
+
+
+
+
+    
     return 0;
 }
