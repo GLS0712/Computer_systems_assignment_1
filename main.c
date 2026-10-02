@@ -18,6 +18,7 @@
 #include <string.h>
 #include <errno.h>
 #include "cbmp.h"
+#include "time.h"
 
 // Creating a directory is one of the few things that isn't the same call
 // on Windows vs Linux/Mac, so we pick the right one at compile time.
@@ -75,8 +76,8 @@ static void ensure_directory(const char *path)
 {
     if (path[0] == '\0')
         return;
-    if (MKDIR(path) != 0 && errno != EEXIST)
-        fprintf(stderr, "Warning: could not create directory '%s'\n", path);
+    // if (MKDIR(path) != 0 && errno != EEXIST)
+    //     fprintf(stderr, "Warning: could not create directory '%s'\n", path);
 }
 
 // "samples/easy/1EASY.bmp" -> "results_example/1EASY_out.bmp"
@@ -97,7 +98,7 @@ static void get_default_output_path(const char *input_path, char *output_path, s
     if (dot)
         *dot = '\0';
 
-    snprintf(output_path, output_path_size, "results_example/%s_out.bmp", name);
+    // snprintf(output_path, output_path_size, "results_example/%s_out.bmp", name);
 }
 
 // From "results_example/1EASY_out.bmp" works out:
@@ -136,10 +137,10 @@ static void get_output_folders(const char *output_path,
     if (dot)
         *dot = '\0';
 
-    if (output_dir[0] != '\0')
-        snprintf(steps_dir, steps_dir_size, "%s/%s_steps", output_dir, base);
-    else
-        snprintf(steps_dir, steps_dir_size, "%s_steps", base);
+    // if (output_dir[0] != '\0')
+    //     snprintf(steps_dir, steps_dir_size, "%s/%s_steps", output_dir, base);
+    // else
+    //     snprintf(steps_dir, steps_dir_size, "%s_steps", base);
 }
 
 /* ------------------------------------------------------------------ */
@@ -332,10 +333,10 @@ int find_cell_centers(unsigned char dist[BMP_WIDTH][BMP_HEIGTH],
                 peaks[peak_count].depth = d;
                 peak_count++;
             }
-            else
-            {
-                fprintf(stderr, "Warning: MAX_PEAKS reached, ignoring peak at (%d,%d)\n", x, y);
-            }
+        //     else
+        //     {
+        //         fprintf(stderr, "Warning: MAX_PEAKS reached, ignoring peak at (%d,%d)\n", x, y);
+        //     }
         }
 
     // 2. Dybeste bakketoppe først: det egentlige centrum af hver celle bliver
@@ -381,10 +382,10 @@ int find_cell_centers(unsigned char dist[BMP_WIDTH][BMP_HEIGTH],
             coords[cell_count][1] = y;
             cell_count++;
         }
-        else
-        {
-            fprintf(stderr, "Warning: MAX_CELLS reached, dropping cell at (%d,%d)\n", x, y);
-        }
+        // else
+        // {
+        //     fprintf(stderr, "Warning: MAX_CELLS reached, dropping cell at (%d,%d)\n", x, y);
+        // }
     }
     return cell_count;
 }
@@ -433,7 +434,7 @@ int main(int argc, char *argv[])
 {
     if (argc != 2 && argc != 3)
     {
-        fprintf(stderr, "Usage: %s <input.bmp> [output.bmp]\n", argv[0]);
+        // fprintf(stderr, "Usage: %s <input.bmp> [output.bmp]\n", argv[0]);
         return 1;
     }
     char *input_path = argv[1];
@@ -463,17 +464,20 @@ int main(int argc, char *argv[])
     ensure_directory(output_dir);
     ensure_directory(steps_dir);
 
+
+    clock_t startTime = clock();
+
     // Trin 1
     read_bitmap(input_path, color_image);
-    printf("Loaded '%s' (%d x %d, %d channels)\n",
-           input_path, BMP_WIDTH, BMP_HEIGTH, BMP_CHANNELS);
+    // printf("Loaded '%s' (%d x %d, %d channels)\n",
+        //    input_path, BMP_WIDTH, BMP_HEIGTH, BMP_CHANNELS);
 
     // Trin 2
     convert_to_grayscale(color_image, gray_image);
 
     // Trin 3
     int threshold = find_threshold(gray_image);
-    printf("Dynamic threshold: %d\n", threshold);
+    // printf("Dynamic threshold: %d\n", threshold);
     apply_threshold(gray_image, binary_image, threshold);
 
     // Trin 4 (in place: binary_image indeholder nu afstande)
@@ -487,7 +491,7 @@ int main(int argc, char *argv[])
             unsigned char g = (unsigned char)(v > 255 ? 255 : v);
             debug_image[x][y][0] = debug_image[x][y][1] = debug_image[x][y][2] = g;
         }
-    snprintf(step_filename, sizeof(step_filename), "%s/distance_map.bmp", steps_dir);
+    // snprintf(step_filename, sizeof(step_filename), "%s/distance_map.bmp", steps_dir);
     write_bitmap(debug_image, step_filename);
 
     // Trin 5
@@ -498,9 +502,16 @@ int main(int argc, char *argv[])
 
     // Trin 7
     write_bitmap(color_image, output_path);
-    printf("Detected %d cell(s) total:\n", cell_count);
-    for (int i = 0; i < cell_count; i++)
-        printf("  cell %d: (x=%d, y=%d)\n", i, coords[i][0], coords[i][1]);
-    printf("Wrote output image with %d marked cell(s) to '%s'\n", cell_count, output_path);
+    // printf("Detected %d cell(s) total:\n", cell_count);
+    // for (int i = 0; i < cell_count; i++)
+    //     printf("  cell %d: (x=%d, y=%d)\n", i, coords[i][0], coords[i][1]);
+    // printf("Wrote output image with %d marked cell(s) to '%s'\n", cell_count, output_path);
+
+
+    clock_t endTime = clock();
+    double runTimeMs = (double)(endTime - startTime) * 1000.0 / CLOCKS_PER_SEC;
+
+    printf("run time: %.3f seconds (%.0f ms)\n", runTimeMs / 1000.0, runTimeMs);
+
     return 0;
 }
