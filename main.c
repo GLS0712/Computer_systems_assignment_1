@@ -1,17 +1,17 @@
-// kompilering (win): gcc cbmp.c main.c -o main.exe -std=c99
-// kørsel (win): main.exe example.bmp [output.bmp]
-// skal køres i din computers terminal, ikke vs-code-terminalen
+// compiling (win): gcc cbmp.c main.c -o main.exe -std=c99
+// running (win): main.exe samples\easy\1EASY.bmp [output.bmp(not necesary)]
+// must be run in your computer's terminal, not the vs-code terminal
 //
-// Celle-detektion med distance transform + watershed-agtig top-finding:
-//   1. Indlæs billede
-//   2. Konvertér til gråtoner
-//   3. Binær threshold (Otsus metode)
-//   4. Distance transform: hver hvid pixel får sin afstand til den
-//      nærmeste sorte pixel -> hver celle bliver en "bakke"
-//   5. Find bakketoppe (cellecentre). Bakketoppe uden en dal imellem
-//      tilhører den samme celle og bliver slået sammen.
-//   6. Tegn en markør på hver celle
-//   7. Gem output-billedet og udskriv resultaterne
+// Cell detection using distance transform + watershed-like peak-finding:
+//   1. Load image
+//   2. Convert to grayscale
+//   3. Binary threshold (Otsu's method)
+//   4. Distance transform: each white pixel gets its distance to the
+//      nearest black pixel -> each cell becomes a "hill"
+//   5. Find hilltops (cell centers). Hilltops without a valley between
+//      them belong to the same cell and get merged.
+//   6. Draw a marker on each cell
+//   7. Save the output image and print the results
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -33,22 +33,22 @@
 #endif
 
 /* ------------------------------------------------------------------ */
-/* Parametre                                                           */
+/* Parameters                                                          */
 /* ------------------------------------------------------------------ */
 
 #define MAX_CELLS 2000
-#define MAX_PEAKS 50000      // maks antal bakketop-kandidater før sammenlægning
+#define MAX_PEAKS 50000      // max number of peak candidates before merging
 
-// Afstande er i chamfer-enheder: 3 = én pixel lige, 4 = én diagonalt.
-#define MIN_PEAK_DEPTH 6     // ignorér pletter der er mindre end ~2 px dybe
-#define PEAK_RADIUS 5        // en bakketop skal være højest inden for denne radius (px)
+// Distances are in chamfer units: 3 = one straight pixel, 4 = one diagonal.
+#define MIN_PEAK_DEPTH 6     // ignore spots that are less than ~2 px deep
+#define PEAK_RADIUS 5        // a peak must be the highest within this radius (px)
 
-#define MIN_CELL_DISTANCE 10  // bakketoppe tættere end dette (px) er altid én celle
-#define VALLEY_SEARCH 25     // tjek for dal mellem bakketoppe tættere end dette (px)
-#define VALLEY_PERCENT 70    // samme celle hvis linjen mellem to bakketoppe aldrig
-                             // falder under denne % af den laveste bakketop
+#define MIN_CELL_DISTANCE 10  // peaks closer than this (px) are always one cell
+#define VALLEY_SEARCH 25     // check for a valley between peaks closer than this (px)
+#define VALLEY_PERCENT 70    // same cell if the line between two peaks never
+                             // drops below this % of the lower peak
 
-#define DEBUG_VALLEYS 0      // 1 = udskriv hver dal-beslutning (til finjustering)
+#define DEBUG_VALLEYS 0      // 1 = print every valley decision (for fine-tuning)
 
 #define MARKER_ARM_LENGHT 5
 #define MARKER_R 255
@@ -56,13 +56,13 @@
 #define MARKER_B 0
 
 /* ------------------------------------------------------------------ */
-/* Små hjælpefunktioner                                                */
+/* Small helper functions                                              */
 /* ------------------------------------------------------------------ */
 
 static int min_int(int a, int b) { return a < b ? a : b; }
 static int max_int(int a, int b) { return a > b ? a : b; }
 
-// Returnerer afstandsværdien, eller 0 (sort) uden for billedet.
+// Returns the distance value, or 0 (black) outside the image.
 static int dist_at(unsigned char d[BMP_WIDTH][BMP_HEIGTH], int x, int y)
 {
     if (x < 0 || x >= BMP_WIDTH || y < 0 || y >= BMP_HEIGTH)
@@ -80,7 +80,7 @@ static void ensure_directory(const char *path)
     //     fprintf(stderr, "Warning: could not create directory '%s'\n", path);
 }
 
-// "samples/easy/1EASY.bmp" -> "results_example/1EASY_out.bmp"
+// "samples/easy/1EASY.bmp" -> "results/1EASY_out.bmp"
 static void get_default_output_path(const char *input_path, char *output_path, size_t output_path_size)
 {
     const char *last_slash = strrchr(input_path, '/');
@@ -98,12 +98,12 @@ static void get_default_output_path(const char *input_path, char *output_path, s
     if (dot)
         *dot = '\0';
 
-    // snprintf(output_path, output_path_size, "results_example/%s_out.bmp", name);
+    // snprintf(output_path, output_path_size, "results/%s_out.bmp", name);
 }
 
-// From "results_example/1EASY_out.bmp" works out:
-//   output_dir = "results_example"
-//   steps_dir  = "results_example/1EASY_out_steps" (debug images for this image)
+// From "results/1EASY_out.bmp" works out:
+//   output_dir = "results"
+//   steps_dir  = "results/1EASY_out_steps" (debug images for this image)
 static void get_output_folders(const char *output_path,
                                char *output_dir, size_t output_dir_size,
                                char *steps_dir, size_t steps_dir_size)
@@ -132,7 +132,7 @@ static void get_output_folders(const char *output_path,
         base[sizeof(base) - 1] = '\0';
     }
 
-    // Fjern filendelsen, f.eks. "1EASY_out.bmp" -> "1EASY_out".
+    // Remove the file extension, e.g. "1EASY_out.bmp" -> "1EASY_out".
     char *dot = strrchr(base, '.');
     if (dot)
         *dot = '\0';
@@ -144,7 +144,7 @@ static void get_output_folders(const char *output_path,
 }
 
 /* ------------------------------------------------------------------ */
-/* Trin 2: gråtoner                                                    */
+/* Step 2: grayscale                                                   */
 /* ------------------------------------------------------------------ */
 
 void convert_to_grayscale(unsigned char image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS],
@@ -153,20 +153,20 @@ void convert_to_grayscale(unsigned char image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNEL
     for (int x = 0; x < BMP_WIDTH; x++)
         for (int y = 0; y < BMP_HEIGTH; y++)
         {
-            // gennemsnit af rød, grøn og blå -> ét gråtone-tal pr. pixel
+            // average of red, green and blue -> one grayscale value per pixel
             int sum = image[x][y][0] + image[x][y][1] + image[x][y][2];
             gray[x][y] = (unsigned char)(sum / 3);
         }
 }
 
 /* ------------------------------------------------------------------ */
-/* Trin 3: threshold (Otsus metode)                                    */
+/* Step 3: threshold (Otsu's method)                                   */
 /* ------------------------------------------------------------------ */
 
-// Prøver alle thresholds t, deler pixels op i baggrund (gray <= t)
-// og forgrund (gray > t), og vælger det t der maksimerer
+// Tries every threshold t, splits pixels into background (gray <= t)
+// and foreground (gray > t), and picks the t that maximizes
 //   count0 * count1 * (mean0 - mean1)^2
-// dvs. den opdeling hvor begge grupper er store OG meget forskellige i lysstyrke.
+// i.e. the split where both groups are large AND very different in brightness.
 int find_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH])
 {
     int histogram[256] = {0};
@@ -179,7 +179,7 @@ int find_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH])
     for (int i = 0; i < 256; i++)
         total_sum += (long)i * histogram[i];
 
-    // Løbende totaler for baggrundssiden, så hvert t er O(1).
+    // Running totals for the background side, so each t is O(1).
     long count0 = 0, sum0 = 0;
     double best_variance = -1.0;
     int best_t = 0;
@@ -191,7 +191,7 @@ int find_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH])
 
         long count1 = total_count - count0;
         if (count0 == 0 || count1 == 0)
-            continue; // alt ligger på én side, ingen gyldig opdeling
+            continue; // everything is on one side, no valid split
 
         double mean0 = (double)sum0 / (double)count0;
         double mean1 = (double)(total_sum - sum0) / (double)count1;
@@ -212,27 +212,27 @@ void apply_threshold(unsigned char gray[BMP_WIDTH][BMP_HEIGTH],
 {
     for (int x = 0; x < BMP_WIDTH; x++)
         for (int y = 0; y < BMP_HEIGTH; y++)
-            // under/lig threshold bliver sort (0), resten bliver hvid (255)
+            // below/at threshold becomes black (0), the rest becomes white (255)
             binary[x][y] = (gray[x][y] <= threshold) ? 0 : 255;
 }
 
 /* ------------------------------------------------------------------ */
-/* Trin 4: distance transform                                          */
+/* Step 4: distance transform                                          */
 /* ------------------------------------------------------------------ */
 
-// Erstatter hver hvid pixel med dens afstand til den nærmeste sorte pixel
-// (chamfer 3-4: lige skridt = 3, diagonalt skridt = 4 ~ 3*sqrt(2)).
-// To gennemløb: forlæns og baglæns. Hvert gennemløb læser kun naboer der
-// allerede er blevet konverteret, så det kører in place -> ingen ekstra buffer.
-// Pixels uden for billedet tæller som sorte.
+// Replaces every white pixel with its distance to the nearest black pixel
+// (chamfer 3-4: straight step = 3, diagonal step = 4 ~ 3*sqrt(2)).
+// Two passes: forward and backward. Each pass only reads neighbors that
+// have already been converted, so it runs in place -> no extra buffer.
+// Pixels outside the image count as black.
 void distance_transform(unsigned char img[BMP_WIDTH][BMP_HEIGTH])
 {
-    // Forlæns gennemløb
+    // Forward pass
     for (int x = 0; x < BMP_WIDTH; x++)
         for (int y = 0; y < BMP_HEIGTH; y++)
         {
             if (img[x][y] == 0)
-                continue; // sort forbliver 0
+                continue; // black stays 0
             int d = 255;
             d = min_int(d, dist_at(img, x - 1, y - 1) + 4);
             d = min_int(d, dist_at(img, x - 1, y) + 3);
@@ -241,7 +241,7 @@ void distance_transform(unsigned char img[BMP_WIDTH][BMP_HEIGTH])
             img[x][y] = (unsigned char)d;
         }
 
-    // Baglæns gennemløb
+    // Backward pass
     for (int x = BMP_WIDTH - 1; x >= 0; x--)
         for (int y = BMP_HEIGTH - 1; y >= 0; y--)
         {
@@ -257,7 +257,7 @@ void distance_transform(unsigned char img[BMP_WIDTH][BMP_HEIGTH])
 }
 
 /* ------------------------------------------------------------------ */
-/* Trin 5: find cellecentre (bakketoppe)                               */
+/* Step 5: find cell centers (peaks)                                   */
 /* ------------------------------------------------------------------ */
 
 typedef struct
@@ -265,8 +265,8 @@ typedef struct
     int x, y, depth;
 } Peak;
 
-// Sortering: dybeste først. Uafgjort afgøres af position, så resultatet er
-// det samme på alle platforme (qsort er ikke stabil).
+// Sorting: deepest first. Ties are broken by position, so the result is
+// the same on all platforms (qsort is not stable).
 static int compare_peaks(const void *a, const void *b)
 {
     const Peak *pa = (const Peak *)a;
@@ -278,10 +278,10 @@ static int compare_peaks(const void *a, const void *b)
     return pa->y - pb->y;
 }
 
-// Går den lige linje mellem to bakketoppe og returnerer det laveste
-// punkt på den som en procentdel af den laveste bakketop.
-//   ~100% -> ingen dal, samme celle
-//   lav % -> dyb dal (smal hals), to celler der rører hinanden
+// Walks the straight line between two peaks and returns its lowest
+// point as a percentage of the lower peak.
+//   ~100% -> no valley, same cell
+//   low % -> deep valley (narrow neck), two cells touching each other
 static int valley_percent(unsigned char dist[BMP_WIDTH][BMP_HEIGTH],
                           int x0, int y0, int x1, int y1)
 {
@@ -300,14 +300,14 @@ static int valley_percent(unsigned char dist[BMP_WIDTH][BMP_HEIGTH],
     return lowest * 100 / lower_peak;
 }
 
-// Returnerer antallet af fundne celler; deres centre skrives til coords.
+// Returns the number of cells found; their centers are written to coords.
 int find_cell_centers(unsigned char dist[BMP_WIDTH][BMP_HEIGTH],
                       int coords[MAX_CELLS][2])
 {
     static Peak peaks[MAX_PEAKS];
     int peak_count = 0;
 
-    // 1. Saml alle pixels der er højest inden for PEAK_RADIUS.
+    // 1. Collect all pixels that are the highest within PEAK_RADIUS.
     for (int x = 0; x < BMP_WIDTH; x++)
         for (int y = 0; y < BMP_HEIGTH; y++)
         {
@@ -339,11 +339,11 @@ int find_cell_centers(unsigned char dist[BMP_WIDTH][BMP_HEIGTH],
         //     }
         }
 
-    // 2. Dybeste bakketoppe først: det egentlige centrum af hver celle bliver
-    //    registreret før en mindre bule på den samme celle.
+    // 2. Deepest peaks first: the true center of each cell gets registered
+    //    before a smaller bump on the same cell.
     qsort(peaks, peak_count, sizeof(Peak), compare_peaks);
 
-    // 3. Acceptér en bakketop som en ny celle, medmindre den tilhører en vi allerede har.
+    // 3. Accept a peak as a new cell unless it belongs to one we already have.
     int cell_count = 0;
     for (int p = 0; p < peak_count; p++)
     {
@@ -358,7 +358,7 @@ int find_cell_centers(unsigned char dist[BMP_WIDTH][BMP_HEIGTH],
 
             if (d2 < MIN_CELL_DISTANCE * MIN_CELL_DISTANCE)
             {
-                same = 1; // samme flade bakketop
+                same = 1; // same flat peak
             }
             else if (d2 < VALLEY_SEARCH * VALLEY_SEARCH)
             {
@@ -391,7 +391,7 @@ int find_cell_centers(unsigned char dist[BMP_WIDTH][BMP_HEIGTH],
 }
 
 /* ------------------------------------------------------------------ */
-/* Trin 6: tegn markører                                               */
+/* Step 6: draw markers                                                */
 /* ------------------------------------------------------------------ */
 
 void generate_output_image(unsigned char color_image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS],
@@ -402,7 +402,7 @@ void generate_output_image(unsigned char color_image[BMP_WIDTH][BMP_HEIGTH][BMP_
         int cx = coords[i][0];
         int cy = coords[i][1];
 
-        // vandret arm
+        // horizontal arm
         for (int dx = -MARKER_ARM_LENGHT; dx <= MARKER_ARM_LENGHT; dx++)
         {
             int x = cx + dx;
@@ -413,7 +413,7 @@ void generate_output_image(unsigned char color_image[BMP_WIDTH][BMP_HEIGTH][BMP_
             color_image[x][cy][2] = MARKER_B;
         }
 
-        // lodret arm
+        // vertical arm
         for (int dy = -MARKER_ARM_LENGHT; dy <= MARKER_ARM_LENGHT; dy++)
         {
             int y = cy + dy;
@@ -452,7 +452,7 @@ int main(int argc, char *argv[])
 
     static unsigned char color_image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS];
     static unsigned char gray_image[BMP_WIDTH][BMP_HEIGTH];
-    static unsigned char binary_image[BMP_WIDTH][BMP_HEIGTH]; // indeholder senere afstande
+    static unsigned char binary_image[BMP_WIDTH][BMP_HEIGTH]; // later holds distances
     static unsigned char debug_image[BMP_WIDTH][BMP_HEIGTH][BMP_CHANNELS];
     static int coords[MAX_CELLS][2];
 
@@ -467,23 +467,23 @@ int main(int argc, char *argv[])
 
     clock_t startTime = clock();
 
-    // Trin 1
+    // Step 1
     read_bitmap(input_path, color_image);
     // printf("Loaded '%s' (%d x %d, %d channels)\n",
         //    input_path, BMP_WIDTH, BMP_HEIGTH, BMP_CHANNELS);
 
-    // Trin 2
+    // Step 2
     convert_to_grayscale(color_image, gray_image);
 
-    // Trin 3
+    // Step 3
     int threshold = find_threshold(gray_image);
     // printf("Dynamic threshold: %d\n", threshold);
     apply_threshold(gray_image, binary_image, threshold);
 
-    // Trin 4 (in place: binary_image indeholder nu afstande)
+    // Step 4 (in place: binary_image now holds distances)
     distance_transform(binary_image);
 
-    // Debug-billede af afstandskortet: lysere = dybere inde i en celle.
+    // Debug image of the distance map: lighter = deeper inside a cell.
     for (int x = 0; x < BMP_WIDTH; x++)
         for (int y = 0; y < BMP_HEIGTH; y++)
         {
@@ -494,13 +494,13 @@ int main(int argc, char *argv[])
     // snprintf(step_filename, sizeof(step_filename), "%s/distance_map.bmp", steps_dir);
     write_bitmap(debug_image, step_filename);
 
-    // Trin 5
+    // Step 5
     int cell_count = find_cell_centers(binary_image, coords);
 
-    // Trin 6
+    // Step 6
     generate_output_image(color_image, coords, cell_count);
 
-    // Trin 7
+    // Step 7
     write_bitmap(color_image, output_path);
     // printf("Detected %d cell(s) total:\n", cell_count);
     // for (int i = 0; i < cell_count; i++)
